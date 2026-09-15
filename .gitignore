@@ -1,0 +1,26 @@
+node_modules
+
+# build outputs
+dist
+.next
+
+# env
+.env
+.env.local
+.env.*.local
+
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# os
+.DS_Store
+
+# editors
+.vscode/*
+!.vscode/extensions.json
+.idea
+
+# coverage
+coverage
