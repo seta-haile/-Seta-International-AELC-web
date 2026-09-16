@@ -26,6 +26,9 @@ jobs:
       - name: Build and start containers
         run: docker compose up -d --build
 
+      - name: Run database migrations
+        run: docker compose exec -T api node apps/api/dist/db/migrate.js
+
       - name: Show container status
         if: always()
         run: docker compose ps
