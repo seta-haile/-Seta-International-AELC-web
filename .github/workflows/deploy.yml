@@ -53,25 +53,39 @@ jobs:
       - name: Run database migrations
         run: docker compose exec -T api node apps/api/dist/db/migrate.js
 
-      - name: Wait for API to become healthy
+      - name: Wait for services to become healthy
         run: |
           $ErrorActionPreference = 'Stop'
-          $deadline = (Get-Date).AddMinutes(2)
-          while ((Get-Date) -lt $deadline) {
-            try {
-              $r = Invoke-WebRequest -Uri http://localhost:3001/users -UseBasicParsing -TimeoutSec 5
-              if ($r.StatusCode -eq 200) {
-                Write-Host "API healthy: HTTP $($r.StatusCode)"
-                exit 0
+          $targets = @(
+            @{ Name = 'api'; Url = 'http://localhost:3001/users' }
+            @{ Name = 'web'; Url = 'http://localhost:3000' }
+          )
+          foreach ($t in $targets) {
+            $deadline = (Get-Date).AddMinutes(2)
+            $ok = $false
+            while ((Get-Date) -lt $deadline) {
+              try {
+                $r = Invoke-WebRequest -Uri $t.Url -UseBasicParsing -TimeoutSec 5
+                if ($r.StatusCode -eq 200) {
+                  Write-Host "$($t.Name) healthy: HTTP $($r.StatusCode)"
+                  $ok = $true
+                  break
+                }
+              } catch {
+                Write-Host "Waiting for $($t.Name)... ($($_.Exception.Message))"
               }
-            } catch {
-              Write-Host "Waiting for API... ($($_.Exception.Message))"
+              Start-Sleep -Seconds 3
             }
-            Start-Sleep -Seconds 3
+            if (-not $ok) {
+              Write-Host "::error::$($t.Name) did not return HTTP 200 within 2 minutes"
+              docker compose logs --tail 50 $t.Name
+              exit 1
+            }
           }
-          Write-Host "::error::API did not return HTTP 200 within 2 minutes"
-          docker compose logs --tail 50 api
-          exit 1
+
+      - name: Prune stale build cache
+        if: always()
+        run: docker builder prune --force --filter until=168h
 
       - name: Write job summary
         if: always()
