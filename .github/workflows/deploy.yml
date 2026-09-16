@@ -14,7 +14,7 @@ jobs:
     runs-on: [self-hosted, windows]
     defaults:
       run:
-        shell: pwsh
+        shell: powershell
         working-directory: C:\apps\aelc-platform
 
     steps:
