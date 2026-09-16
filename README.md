@@ -29,31 +29,38 @@ pnpm db:migrate    # apply migrations locally
 pnpm db:studio     # browse data with Drizzle Studio
 ```
 
-Migrations are committed under `apps/api/drizzle/` and applied automatically
-by the `api` container on startup (see `apps/api/src/db/migrate.ts`).
-
-## Production deploy (VPS + Docker)
-
-Each app has its own multi-stage `Dockerfile` (build context must be the
-repo root, since this is a pnpm workspace):
+Migrations are committed under `apps/api/drizzle/`. They are **not** applied
+automatically by the `api` container — run them explicitly after the
+container is up:
 
 ```bash
-docker build -f apps/web/Dockerfile --build-arg NEXT_PUBLIC_API_URL=https://api.example.com -t aelc-web .
-docker build -f apps/api/Dockerfile -t aelc-api .
+docker compose exec api node apps/api/dist/db/migrate.js
 ```
 
-Or bring up the whole stack (Postgres + api + web) with
-`docker-compose.prod.yml`:
+Run this once after the first `docker compose up -d --build`, and again
+after any deploy that adds new migrations.
+
+## Deploy with Docker
+
+`docker-compose.yml` builds and runs Postgres + `api` + `web` together:
 
 ```bash
-export POSTGRES_PASSWORD=change-me
-export CORS_ORIGIN=https://app.example.com
-export NEXT_PUBLIC_API_URL=https://api.example.com
-
-docker compose -f docker-compose.prod.yml up -d --build
+cp apps/api/.env.example apps/api/.env   # fill in real values, see comments in the file
+docker compose up -d --build
+docker compose exec api node apps/api/dist/db/migrate.js
 ```
 
-The `api` container runs pending Drizzle migrations before starting the
-server. Put nginx (or another reverse proxy) in front of ports `3000`
-(web) and `3001` (api) on the VPS and terminate TLS there — this repo
-does not include a reverse-proxy/TLS setup.
+`apps/api/.env` (untracked, lives only on the deploy machine) must set
+`DATABASE_URL` to the *docker-network* form — `postgres://postgres:postgres@postgres:5432/aelc`
+(service name `postgres`, container port `5432`) — not `localhost`, since
+`localhost` inside the `api` container refers to the container itself, not
+the `postgres` service.
+
+The `web` service currently builds without a `NEXT_PUBLIC_API_URL` build
+arg in `docker-compose.yml`, so `process.env.NEXT_PUBLIC_API_URL` is empty
+in the built frontend — add a `build.args` entry there once the frontend
+actually calls the API from the browser.
+
+Put nginx (or another reverse proxy) in front of ports `3000` (web) and
+`3001` (api) and terminate TLS there — this repo does not include a
+reverse-proxy/TLS setup.
