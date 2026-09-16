@@ -1,0 +1,32 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, windows]
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: C:\apps\aelc-platform
+
+    steps:
+      - name: Pull latest code
+        run: |
+          git fetch origin main
+          git reset --hard origin/main
+          git rev-parse --short HEAD
+
+      - name: Build and start containers
+        run: docker compose up -d --build
+
+      - name: Show container status
+        if: always()
+        run: docker compose ps
