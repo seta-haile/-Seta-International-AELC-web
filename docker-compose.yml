@@ -27,7 +27,17 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+      args:
+        # Next inlines NEXT_PUBLIC_* at build time, so this has to be set
+        # here as well as below or the bundle ships an empty base URL and
+        # every fetch throws ERR_INVALID_URL.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://api:3001}
     restart: unless-stopped
+    environment:
+      # Only the route handlers and lib/auth.ts read this, and both run
+      # inside this container, so it reaches the api over the compose
+      # network rather than from the browser.
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://api:3001}
     ports:
       - "3000:3000"
     depends_on:
