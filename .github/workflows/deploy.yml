@@ -20,8 +20,7 @@ jobs:
     steps:
       - name: Pull latest code
         run: |
-          git fetch origin main
-          git reset --hard origin/main
+          git pull --ff-only origin main
           git rev-parse --short HEAD
 
       - name: Build and start containers
