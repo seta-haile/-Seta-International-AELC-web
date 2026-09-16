@@ -13,6 +13,12 @@ function getTokenExpirySeconds(token: string): number | undefined {
   }
 }
 
+function isSecureRequest(request: Request): boolean {
+  const forwardedProto = request.headers.get("x-forwarded-proto");
+  if (forwardedProto) return forwardedProto === "https";
+  return new URL(request.url).protocol === "https:";
+}
+
 export async function POST(request: Request) {
   const body = await request.json();
 
@@ -34,7 +40,7 @@ export async function POST(request: Request) {
   const cookieStore = await cookies();
   cookieStore.set(SESSION_COOKIE, accessToken, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: isSecureRequest(request),
     sameSite: "lax",
     path: "/",
     maxAge: getTokenExpirySeconds(accessToken),
