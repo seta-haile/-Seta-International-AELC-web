@@ -21,14 +21,57 @@ jobs:
       - name: Pull latest code
         run: |
           git pull --ff-only origin main
-          git rev-parse --short HEAD
+          "DEPLOYED_SHA=$(git rev-parse --short HEAD)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          git log -1 --pretty=format:"%h %s"
 
-      - name: Build and start containers
-        run: docker compose up -d --build
+      - name: Build images
+        run: docker compose build
+
+      - name: Start containers
+        run: docker compose up -d
 
       - name: Run database migrations
         run: docker compose exec -T api node apps/api/dist/db/migrate.js
 
-      - name: Show container status
+      - name: Wait for API to become healthy
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $deadline = (Get-Date).AddMinutes(2)
+          while ((Get-Date) -lt $deadline) {
+            try {
+              $r = Invoke-WebRequest -Uri http://localhost:3001/users -UseBasicParsing -TimeoutSec 5
+              if ($r.StatusCode -eq 200) {
+                Write-Host "API healthy: HTTP $($r.StatusCode)"
+                exit 0
+              }
+            } catch {
+              Write-Host "Waiting for API... ($($_.Exception.Message))"
+            }
+            Start-Sleep -Seconds 3
+          }
+          Write-Host "::error::API did not return HTTP 200 within 2 minutes"
+          docker compose logs --tail 50 api
+          exit 1
+
+      - name: Write job summary
         if: always()
-        run: docker compose ps
+        run: |
+          $status = if ($env:JOB_STATUS -eq 'success') { 'Succeeded' } else { 'Failed' }
+          $ps = docker compose ps --format "table {{.Service}}\t{{.Status}}\t{{.Ports}}" | Out-String
+          @(
+            "## Deploy $status"
+            ""
+            "| | |"
+            "|---|---|"
+            "| Commit | ``$env:DEPLOYED_SHA`` |"
+            "| Branch | ``$env:GITHUB_REF_NAME`` |"
+            "| Runner | ``$env:RUNNER_NAME`` |"
+            ""
+            "### Containers"
+            ""
+            '```'
+            $ps.Trim()
+            '```'
+          ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+        env:
+          JOB_STATUS: ${{ job.status }}
