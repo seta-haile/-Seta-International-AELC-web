@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 
 const PROTECTED_PREFIXES = [
   "/dashboard",
+  "/dashboard-test",
   "/issues",
   "/ai-runs",
   "/code-intelligence",
@@ -32,6 +33,7 @@ export function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     "/dashboard/:path*",
+    "/dashboard-test/:path*",
     "/issues/:path*",
     "/ai-runs/:path*",
     "/code-intelligence/:path*",
