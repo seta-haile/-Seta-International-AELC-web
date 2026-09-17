@@ -247,6 +247,136 @@ describe('RecordsSyncService', () => {
     });
   });
 
+  it('keeps attribution_link records from different installations as separate rows instead of colliding onto one', async () => {
+    await withRollback(async (db) => {
+      const organizationId = randomUUID();
+      const installationA = randomUUID();
+      const installationB = randomUUID();
+      const consumerApi = {
+        listRecords: vi.fn().mockResolvedValue({
+          records: [
+            {
+              organizationId,
+              scopeInstallationId: installationA,
+              entityType: 'attribution_link',
+              entityId: 'entity-1',
+              latestRevision: 1,
+              highestContiguousRevision: 1,
+              revisionGap: false,
+              isTombstone: false,
+              occurredAt: '2026-09-01T00:00:00Z',
+              observedAt: '2026-09-01T00:00:00Z',
+              receivedAt: '2026-09-01T00:00:00Z',
+              freshnessAt: '2026-09-01T00:00:00Z',
+              payload: { installation: 'a' },
+              submissionCount: 1,
+              recordVersion: 1,
+            },
+            {
+              organizationId,
+              scopeInstallationId: installationB,
+              entityType: 'attribution_link',
+              entityId: 'entity-1',
+              latestRevision: 1,
+              highestContiguousRevision: 1,
+              revisionGap: false,
+              isTombstone: false,
+              occurredAt: '2026-09-01T00:00:00Z',
+              observedAt: '2026-09-01T00:00:00Z',
+              receivedAt: '2026-09-01T00:00:00Z',
+              freshnessAt: '2026-09-01T00:00:00Z',
+              payload: { installation: 'b' },
+              submissionCount: 1,
+              recordVersion: 1,
+            },
+          ],
+          nextCursor: null,
+        }),
+      };
+      const service = await createService(db, consumerApi);
+
+      await service.syncOnePage(organizationId, 'attribution_link');
+
+      const records = await db
+        .select()
+        .from(governanceRecords)
+        .where(
+          and(
+            eq(governanceRecords.organizationId, organizationId),
+            eq(governanceRecords.entityId, 'entity-1'),
+          ),
+        );
+
+      expect(records).toHaveLength(2);
+      const byInstallation = new Map(
+        records.map((r) => [r.scopeInstallationId, r.payload]),
+      );
+      expect(byInstallation.get(installationA)).toEqual({
+        installation: 'a',
+      });
+      expect(byInstallation.get(installationB)).toEqual({
+        installation: 'b',
+      });
+    });
+  });
+
+  it('never regresses a NULL-scoped (usage/activity/relation) record even after the scope-aware conflict target change', async () => {
+    await withRollback(async (db) => {
+      const organizationId = randomUUID();
+      await db.insert(governanceRecords).values({
+        organizationId,
+        scopeInstallationId: null,
+        entityType: 'usage',
+        entityId: 'entity-1',
+        latestRevision: 5,
+        isTombstone: false,
+        occurredAt: new Date('2026-09-01T00:00:00Z'),
+        payload: { count: 5 },
+      });
+      const consumerApi = {
+        listRecords: vi.fn().mockResolvedValue({
+          records: [
+            {
+              organizationId,
+              scopeInstallationId: null,
+              entityType: 'usage',
+              entityId: 'entity-1',
+              latestRevision: 3,
+              highestContiguousRevision: 3,
+              revisionGap: false,
+              isTombstone: false,
+              occurredAt: '2026-09-02T00:00:00Z',
+              observedAt: '2026-09-02T00:00:00Z',
+              receivedAt: '2026-09-02T00:00:00Z',
+              freshnessAt: '2026-09-02T00:00:00Z',
+              payload: { count: 3 },
+              submissionCount: 1,
+              recordVersion: 1,
+            },
+          ],
+          nextCursor: null,
+        }),
+      };
+      const service = await createService(db, consumerApi);
+
+      await service.syncOnePage(organizationId, 'usage');
+
+      const records = await db
+        .select()
+        .from(governanceRecords)
+        .where(
+          and(
+            eq(governanceRecords.organizationId, organizationId),
+            eq(governanceRecords.entityId, 'entity-1'),
+          ),
+        );
+
+      expect(records).toHaveLength(1);
+      expect(records[0]?.latestRevision).toBe(5);
+      expect(records[0]?.payload).toEqual({ count: 5 });
+    });
+  });
+
   it('continues syncing remaining organizations and entity types after one combination fails, covering all 4 entity types per organization', async () => {
     await withRollback(async (db) => {
       const orgA = randomUUID();

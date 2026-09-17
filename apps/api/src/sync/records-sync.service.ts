@@ -80,6 +80,7 @@ export class RecordsSyncService {
           .insert(governanceRecords)
           .values({
             organizationId: record.organizationId,
+            scopeInstallationId: record.scopeInstallationId,
             entityType: record.entityType,
             entityId: record.entityId,
             latestRevision: record.latestRevision,
@@ -89,10 +90,19 @@ export class RecordsSyncService {
             syncedAt: new Date(),
           })
           .onConflictDoUpdate({
+            // Matches the governance_records_org_entity_scope_unique index
+            // (see governance-records.schema.ts): scopeInstallationKey is a
+            // generated column that normalizes a NULL scope_installation_id
+            // to a fixed sentinel, so usage/activity/relation rows (always
+            // NULL-scoped) still collide with each other, while
+            // attribution_link rows for different installations of the same
+            // (org, entity_type, entity_id) stay as separate rows instead of
+            // colliding onto one.
             target: [
               governanceRecords.organizationId,
               governanceRecords.entityType,
               governanceRecords.entityId,
+              governanceRecords.scopeInstallationKey,
             ],
             set: {
               latestRevision: record.latestRevision,
