@@ -139,12 +139,24 @@ function mapCompletenessSummary(
 @Injectable()
 export class ConsumerApiClient {
   private readonly logger = new Logger(ConsumerApiClient.name);
-  private readonly baseUrl: string;
-  private readonly token: string;
+  private readonly baseUrl: string | undefined;
+  private readonly token: string | undefined;
 
   constructor(config: ConfigService) {
-    this.baseUrl = config.getOrThrow<string>('CONSUMER_API_BASE_URL');
-    this.token = config.getOrThrow<string>('CONSUMER_API_TOKEN');
+    // Read optionally rather than getOrThrow: SyncModule is imported
+    // unconditionally into AppModule and this client is instantiated eagerly
+    // at boot (via SyncScheduler's OnApplicationBootstrap), so throwing here
+    // would crash the entire API — not just the sync feature — whenever
+    // CONSUMER_API_BASE_URL/CONSUMER_API_TOKEN aren't set. SyncScheduler
+    // checks isConfigured() before registering any sync intervals; the
+    // request() guard below is a second line of defense in case a method is
+    // ever called some other way without that check.
+    this.baseUrl = config.get<string>('CONSUMER_API_BASE_URL');
+    this.token = config.get<string>('CONSUMER_API_TOKEN');
+  }
+
+  isConfigured(): boolean {
+    return this.baseUrl !== undefined && this.token !== undefined;
   }
 
   async listOrganizations(): Promise<string[]> {
@@ -198,6 +210,12 @@ export class ConsumerApiClient {
   }
 
   private async request<T>(path: string): Promise<T> {
+    if (this.baseUrl === undefined || this.token === undefined) {
+      throw new ConsumerApiError(
+        'ConsumerApiClient is not configured: CONSUMER_API_BASE_URL/CONSUMER_API_TOKEN are not set',
+      );
+    }
+
     const url = `${this.baseUrl}${path}`;
     let response: Response;
     try {

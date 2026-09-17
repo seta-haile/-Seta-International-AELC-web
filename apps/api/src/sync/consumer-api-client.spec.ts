@@ -4,18 +4,18 @@ import { ConsumerApiClient, ConsumerApiError } from './consumer-api-client.js';
 
 describe('ConsumerApiClient', () => {
   const config = {
-    getOrThrow: vi.fn((key: string) => {
+    get: vi.fn((key: string) => {
       if (key === 'CONSUMER_API_BASE_URL') return 'https://central.test';
       if (key === 'CONSUMER_API_TOKEN') return 'test-token';
-      throw new Error(`unexpected config key ${key}`);
+      return undefined;
     }),
   };
 
-  async function createClient() {
+  async function createClient(configOverride: Partial<ConfigService> = config) {
     const moduleRef = await Test.createTestingModule({
       providers: [
         ConsumerApiClient,
-        { provide: ConfigService, useValue: config },
+        { provide: ConfigService, useValue: configOverride },
       ],
     }).compile();
     return moduleRef.get(ConsumerApiClient);
@@ -175,6 +175,35 @@ describe('ConsumerApiClient', () => {
         permanentRejection: 0,
       },
       summaryVersion: 1,
+    });
+  });
+
+  it('reports isConfigured() true when both env vars are present', async () => {
+    const client = await createClient();
+    expect(client.isConfigured()).toBe(true);
+  });
+
+  describe('when CONSUMER_API_BASE_URL/CONSUMER_API_TOKEN are not configured', () => {
+    const unconfigured = { get: vi.fn().mockReturnValue(undefined) };
+
+    it('does not throw in the constructor', async () => {
+      await expect(createClient(unconfigured)).resolves.toBeDefined();
+    });
+
+    it('reports isConfigured() false', async () => {
+      const client = await createClient(unconfigured);
+      expect(client.isConfigured()).toBe(false);
+    });
+
+    it('throws a clear ConsumerApiError instead of calling fetch when a method is invoked anyway', async () => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+      const client = await createClient(unconfigured);
+
+      await expect(client.listOrganizations()).rejects.toThrow(
+        ConsumerApiError,
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
     });
   });
 });

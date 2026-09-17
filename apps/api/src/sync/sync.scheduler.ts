@@ -7,6 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { CompletenessSyncService } from './completeness-sync.service.js';
+import { ConsumerApiClient } from './consumer-api-client.js';
 import { RecordsSyncService } from './records-sync.service.js';
 
 const RECORDS_INTERVAL_NAME = 'governance-records-sync';
@@ -23,9 +24,17 @@ export class SyncScheduler implements OnApplicationBootstrap, OnModuleDestroy {
     private readonly completenessSync: CompletenessSyncService,
     private readonly config: ConfigService,
     private readonly schedulerRegistry: SchedulerRegistry,
+    private readonly consumerApi: ConsumerApiClient,
   ) {}
 
   onApplicationBootstrap(): void {
+    if (!this.consumerApi.isConfigured()) {
+      this.logger.warn(
+        'Sync disabled: CONSUMER_API_BASE_URL/CONSUMER_API_TOKEN not configured',
+      );
+      return;
+    }
+
     const recordsIntervalMs = this.config.get<number>(
       'SYNC_RECORDS_INTERVAL_MS',
       DEFAULT_RECORDS_INTERVAL_MS,
@@ -58,7 +67,17 @@ export class SyncScheduler implements OnApplicationBootstrap, OnModuleDestroy {
   }
 
   onModuleDestroy(): void {
-    this.schedulerRegistry.deleteInterval(RECORDS_INTERVAL_NAME);
-    this.schedulerRegistry.deleteInterval(COMPLETENESS_INTERVAL_NAME);
+    // Guard with doesExist: onApplicationBootstrap skips registering these
+    // intervals entirely when sync isn't configured, and
+    // SchedulerRegistry.deleteInterval throws if the name was never
+    // registered.
+    if (this.schedulerRegistry.doesExist('interval', RECORDS_INTERVAL_NAME)) {
+      this.schedulerRegistry.deleteInterval(RECORDS_INTERVAL_NAME);
+    }
+    if (
+      this.schedulerRegistry.doesExist('interval', COMPLETENESS_INTERVAL_NAME)
+    ) {
+      this.schedulerRegistry.deleteInterval(COMPLETENESS_INTERVAL_NAME);
+    }
   }
 }
