@@ -22,27 +22,31 @@ export class RecordsSyncService {
     private readonly consumerApi: ConsumerApiClient,
   ) {}
 
+  /** Runs one sync pass across every organization/entity type. Throws if
+   * any part of the pass failed, so callers can tell a fully-successful
+   * tick apart from one where every organization errored out silently. */
   async syncAllOrganizations(): Promise<void> {
-    let organizationIds: string[];
-    try {
-      organizationIds = await this.consumerApi.listOrganizations();
-    } catch (error) {
-      this.logger.error(
-        `Failed to list organizations: ${(error as Error).message}`,
-      );
-      return;
-    }
+    const organizationIds = await this.consumerApi.listOrganizations();
 
+    const failures: string[] = [];
     for (const organizationId of organizationIds) {
       for (const entityType of ENTITY_TYPES) {
         try {
           await this.syncOnePage(organizationId, entityType);
         } catch (error) {
+          const message = (error as Error).message;
           this.logger.error(
-            `Sync failed for organizationId=${organizationId} entityType=${entityType}: ${(error as Error).message}`,
+            `Sync failed for organizationId=${organizationId} entityType=${entityType}: ${message}`,
           );
+          failures.push(`${organizationId}/${entityType}: ${message}`);
         }
       }
+    }
+
+    if (failures.length > 0) {
+      throw new Error(
+        `${failures.length} of ${organizationIds.length * ENTITY_TYPES.length} record sync tasks failed: ${failures.join('; ')}`,
+      );
     }
   }
 
@@ -60,19 +64,11 @@ export class RecordsSyncService {
         ),
       );
 
-    let page: ConsumerRecordsPage;
-    try {
-      page = await this.consumerApi.listRecords({
-        organizationId,
-        entityType,
-        cursor: cursorRow?.cursor ?? null,
-      });
-    } catch (error) {
-      this.logger.error(
-        `Failed to fetch records for organizationId=${organizationId} entityType=${entityType}: ${(error as Error).message}`,
-      );
-      return;
-    }
+    const page = await this.consumerApi.listRecords({
+      organizationId,
+      entityType,
+      cursor: cursorRow?.cursor ?? null,
+    });
 
     await this.db.transaction(async (tx) => {
       for (const record of page.records) {

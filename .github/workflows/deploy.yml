@@ -62,13 +62,13 @@ jobs:
           git log -1 --pretty=format:"%h %s"
 
       - name: Build images
-        run: docker compose build
+        run: docker compose -f docker-compose.prod.yml build
 
       - name: Start containers
-        run: docker compose up -d
+        run: docker compose -f docker-compose.prod.yml up -d
 
       - name: Run database migrations
-        run: docker compose exec -T api node apps/api/dist/db/migrate.js
+        run: docker compose -f docker-compose.prod.yml exec -T api node apps/api/dist/db/migrate.js
 
       - name: Wait for services to become healthy
         run: |
@@ -95,9 +95,30 @@ jobs:
             }
             if (-not $ok) {
               Write-Host "::error::$($t.Name) did not return HTTP 200 within 2 minutes"
-              docker compose logs --tail 50 $t.Name
+              docker compose -f docker-compose.prod.yml logs --tail 50 $t.Name
               exit 1
             }
+          }
+
+      - name: Check governance sync status
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $r = Invoke-WebRequest -Uri 'http://localhost:3001/sync/health' -UseBasicParsing -TimeoutSec 5
+          $status = $r.Content | ConvertFrom-Json
+          Write-Host "records: configured=$($status.records.configured) lastSuccessAt=$($status.records.lastSuccessAt) consecutiveFailures=$($status.records.consecutiveFailures)"
+          Write-Host "completeness: configured=$($status.completeness.configured) lastSuccessAt=$($status.completeness.lastSuccessAt) consecutiveFailures=$($status.completeness.consecutiveFailures)"
+          if (-not $status.records.configured -or -not $status.completeness.configured) {
+            Write-Host "::warning::Governance sync is not configured (CONSUMER_API_BASE_URL/CONSUMER_API_TOKEN missing) — /dashboard-test will stay empty."
+          }
+          # A fresh deploy hasn't ticked yet, so this only flags a job that
+          # was already failing before the deploy and is still failing now —
+          # not "no successful run yet" (that's a separate, expected state
+          # for minutes after every deploy or first-ever setup).
+          if ($status.records.consecutiveFailures -gt 3) {
+            Write-Host "::warning::Records sync has failed $($status.records.consecutiveFailures) times in a row — last error: $($status.records.lastError)"
+          }
+          if ($status.completeness.consecutiveFailures -gt 3) {
+            Write-Host "::warning::Completeness sync has failed $($status.completeness.consecutiveFailures) times in a row — last error: $($status.completeness.lastError)"
           }
 
       - name: Prune stale build cache
@@ -108,7 +129,7 @@ jobs:
         if: always()
         run: |
           $status = if ($env:JOB_STATUS -eq 'success') { 'Succeeded' } else { 'Failed' }
-          $ps = docker compose ps --format "table {{.Service}}\t{{.Status}}\t{{.Ports}}" | Out-String
+          $ps = docker compose -f docker-compose.prod.yml ps --format "table {{.Service}}\t{{.Status}}\t{{.Ports}}" | Out-String
           @(
             "## Deploy $status"
             ""

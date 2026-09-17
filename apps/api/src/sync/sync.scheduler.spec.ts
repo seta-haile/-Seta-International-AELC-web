@@ -4,6 +4,7 @@ import { Test } from '@nestjs/testing';
 import { CompletenessSyncService } from './completeness-sync.service.js';
 import { ConsumerApiClient } from './consumer-api-client.js';
 import { RecordsSyncService } from './records-sync.service.js';
+import { SyncStatusService } from './sync-status.service.js';
 import { SyncScheduler } from './sync.scheduler.js';
 
 describe('SyncScheduler', () => {
@@ -25,11 +26,13 @@ describe('SyncScheduler', () => {
         { provide: CompletenessSyncService, useValue: completenessSync },
         { provide: ConfigService, useValue: config },
         { provide: ConsumerApiClient, useValue: consumerApi },
+        SyncStatusService,
       ],
     }).compile();
     return {
       scheduler: moduleRef.get(SyncScheduler),
       registry: moduleRef.get(SchedulerRegistry),
+      syncStatus: moduleRef.get(SyncStatusService),
       recordsSync,
       completenessSync,
     };
@@ -45,7 +48,7 @@ describe('SyncScheduler', () => {
       }),
     };
     const consumerApi = { isConfigured: vi.fn().mockReturnValue(true) };
-    const { scheduler, registry, recordsSync, completenessSync } =
+    const { scheduler, registry, syncStatus, recordsSync, completenessSync } =
       await createScheduler(config, consumerApi);
 
     scheduler.onApplicationBootstrap();
@@ -63,6 +66,10 @@ describe('SyncScheduler', () => {
 
     await vi.advanceTimersByTimeAsync(4000);
     expect(completenessSync.syncAllOrganizations).toHaveBeenCalledTimes(1);
+
+    const status = syncStatus.getStatus();
+    expect(status.records.lastSuccessAt).not.toBeNull();
+    expect(status.completeness.lastSuccessAt).not.toBeNull();
 
     scheduler.onModuleDestroy();
     expect(registry.doesExist('interval', 'governance-records-sync')).toBe(
@@ -105,6 +112,38 @@ describe('SyncScheduler', () => {
     await vi.advanceTimersByTimeAsync(10_000);
     expect(recordsSync.syncAllOrganizations).not.toHaveBeenCalled();
     expect(completenessSync.syncAllOrganizations).not.toHaveBeenCalled();
+
+    vi.useRealTimers();
+  });
+
+  it('records a failure in sync status when a tick throws, without crashing the interval', async () => {
+    vi.useFakeTimers();
+    const config = {
+      get: vi.fn((key: string, fallback: number) => {
+        if (key === 'SYNC_RECORDS_INTERVAL_MS') return 1000;
+        return fallback;
+      }),
+    };
+    const consumerApi = { isConfigured: vi.fn().mockReturnValue(true) };
+    const recordsSync = {
+      syncAllOrganizations: vi.fn().mockRejectedValue(new Error('401 Unauthorized')),
+    };
+    const { scheduler, syncStatus } = await createScheduler(
+      config,
+      consumerApi,
+      recordsSync,
+    );
+
+    scheduler.onApplicationBootstrap();
+    await vi.advanceTimersByTimeAsync(1000);
+
+    const status = syncStatus.getStatus();
+    expect(status.records.lastSuccessAt).toBeNull();
+    expect(status.records.lastError).toBe('401 Unauthorized');
+    expect(status.records.consecutiveFailures).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(status.records.consecutiveFailures).toBeLessThanOrEqual(2);
 
     vi.useRealTimers();
   });

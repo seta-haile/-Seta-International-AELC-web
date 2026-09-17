@@ -28,6 +28,17 @@ services:
       PORT: 3001
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-aelc}
       CORS_ORIGIN: ${CORS_ORIGIN:?CORS_ORIGIN is required}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      # AELC central consumer API — see docs/superpowers/specs on the AELC
+      # side and CONSUMER_API_TOKEN issuance via `engineering-central admin
+      # consumer issue`. Required so SyncScheduler actually runs instead of
+      # silently no-op'ing (see apps/api/src/sync/sync.scheduler.ts).
+      CONSUMER_API_BASE_URL: ${CONSUMER_API_BASE_URL:?CONSUMER_API_BASE_URL is required}
+      CONSUMER_API_TOKEN: ${CONSUMER_API_TOKEN:?CONSUMER_API_TOKEN is required}
+      SYNC_COMPLETENESS_WINDOW_DAYS: ${SYNC_COMPLETENESS_WINDOW_DAYS:-7}
+      SYNC_RECORDS_INTERVAL_MS: ${SYNC_RECORDS_INTERVAL_MS:-300000}
+      SYNC_COMPLETENESS_INTERVAL_MS: ${SYNC_COMPLETENESS_INTERVAL_MS:-3600000}
     command: sh -c "node apps/api/dist/db/migrate.js && node apps/api/dist/main.js"
     ports:
       - "3001:3001"
