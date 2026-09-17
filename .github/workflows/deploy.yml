@@ -12,6 +12,22 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: aelc_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/aelc_test
     steps:
       - uses: actions/checkout@v4
 
@@ -27,6 +43,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter web build
       - run: pnpm --filter api build
+      - run: pnpm --filter api db:migrate
       - run: pnpm --filter api test
 
   deploy:

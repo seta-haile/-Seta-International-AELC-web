@@ -1,0 +1,132 @@
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { and, eq, sql } from 'drizzle-orm';
+import { DRIZZLE } from '../db/db.constants.js';
+import type { DrizzleDb } from '../db/db.types.js';
+import {
+  ENTITY_TYPES,
+  governanceRecords,
+  syncCursors,
+  type EntityType,
+} from '../db/schema/index.js';
+import {
+  ConsumerApiClient,
+  type ConsumerRecordsPage,
+} from './consumer-api-client.js';
+
+@Injectable()
+export class RecordsSyncService {
+  private readonly logger = new Logger(RecordsSyncService.name);
+
+  constructor(
+    @Inject(DRIZZLE) private readonly db: DrizzleDb,
+    private readonly consumerApi: ConsumerApiClient,
+  ) {}
+
+  async syncAllOrganizations(): Promise<void> {
+    let organizationIds: string[];
+    try {
+      organizationIds = await this.consumerApi.listOrganizations();
+    } catch (error) {
+      this.logger.error(
+        `Failed to list organizations: ${(error as Error).message}`,
+      );
+      return;
+    }
+
+    for (const organizationId of organizationIds) {
+      for (const entityType of ENTITY_TYPES) {
+        try {
+          await this.syncOnePage(organizationId, entityType);
+        } catch (error) {
+          this.logger.error(
+            `Sync failed for organizationId=${organizationId} entityType=${entityType}: ${(error as Error).message}`,
+          );
+        }
+      }
+    }
+  }
+
+  async syncOnePage(
+    organizationId: string,
+    entityType: EntityType,
+  ): Promise<void> {
+    const [cursorRow] = await this.db
+      .select()
+      .from(syncCursors)
+      .where(
+        and(
+          eq(syncCursors.organizationId, organizationId),
+          eq(syncCursors.entityType, entityType),
+        ),
+      );
+
+    let page: ConsumerRecordsPage;
+    try {
+      page = await this.consumerApi.listRecords({
+        organizationId,
+        entityType,
+        cursor: cursorRow?.cursor ?? null,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to fetch records for organizationId=${organizationId} entityType=${entityType}: ${(error as Error).message}`,
+      );
+      return;
+    }
+
+    await this.db.transaction(async (tx) => {
+      for (const record of page.records) {
+        await tx
+          .insert(governanceRecords)
+          .values({
+            organizationId: record.organizationId,
+            scopeInstallationId: record.scopeInstallationId,
+            entityType: record.entityType,
+            entityId: record.entityId,
+            latestRevision: record.latestRevision,
+            isTombstone: record.isTombstone,
+            occurredAt: new Date(record.occurredAt),
+            payload: record.payload,
+            syncedAt: new Date(),
+          })
+          .onConflictDoUpdate({
+            // Matches the governance_records_org_entity_scope_unique index
+            // (see governance-records.schema.ts): scopeInstallationKey is a
+            // generated column that normalizes a NULL scope_installation_id
+            // to a fixed sentinel, so usage/activity/relation rows (always
+            // NULL-scoped) still collide with each other, while
+            // attribution_link rows for different installations of the same
+            // (org, entity_type, entity_id) stay as separate rows instead of
+            // colliding onto one.
+            target: [
+              governanceRecords.organizationId,
+              governanceRecords.entityType,
+              governanceRecords.entityId,
+              governanceRecords.scopeInstallationKey,
+            ],
+            set: {
+              latestRevision: record.latestRevision,
+              isTombstone: record.isTombstone,
+              occurredAt: new Date(record.occurredAt),
+              payload: record.payload,
+              syncedAt: new Date(),
+            },
+            setWhere: sql`${governanceRecords.latestRevision} < ${record.latestRevision}`,
+          });
+      }
+
+      await tx
+        .insert(syncCursors)
+        .values({
+          organizationId,
+          entityType,
+          cursor: page.nextCursor,
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: [syncCursors.organizationId, syncCursors.entityType],
+          set: { cursor: page.nextCursor, updatedAt: new Date() },
+        });
+    });
+  }
+}
