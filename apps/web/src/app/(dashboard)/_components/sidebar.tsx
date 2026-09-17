@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   Blocks,
   CircleDot,
+  FlaskConical,
   GitPullRequest,
   Gem,
   LayoutDashboard,
@@ -18,6 +19,7 @@ import { cn } from "cn";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/dashboard-test", label: "Dashboard Test", icon: FlaskConical },
   { href: "/issues", label: "Issues", icon: CircleDot },
   { href: "/ai-runs", label: "AI Runs", icon: Zap },
   { href: "/code-intelligence", label: "Code Intelligence", icon: ScanSearch },
