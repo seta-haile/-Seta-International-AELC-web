@@ -8,7 +8,10 @@ import {
   syncCursors,
   type EntityType,
 } from '../db/schema/index.js';
-import { ConsumerApiClient, type ConsumerRecordsPage } from './consumer-api-client.js';
+import {
+  ConsumerApiClient,
+  type ConsumerRecordsPage,
+} from './consumer-api-client.js';
 
 @Injectable()
 export class RecordsSyncService {

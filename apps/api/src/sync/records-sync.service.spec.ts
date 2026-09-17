@@ -229,7 +229,9 @@ describe('RecordsSyncService', () => {
       };
       const service = await createService(db, consumerApi);
 
-      await expect(service.syncOnePage(organizationId, 'usage')).rejects.toThrow();
+      await expect(
+        service.syncOnePage(organizationId, 'usage'),
+      ).rejects.toThrow();
 
       const records = await db
         .select()
