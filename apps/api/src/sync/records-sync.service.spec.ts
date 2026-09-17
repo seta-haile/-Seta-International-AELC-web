@@ -113,7 +113,7 @@ describe('RecordsSyncService', () => {
     });
   });
 
-  it('leaves the cursor untouched when the consumer API call fails', async () => {
+  it('leaves the cursor untouched and rejects when the consumer API call fails', async () => {
     await withRollback(async (db) => {
       const organizationId = randomUUID();
       await db.insert(syncCursors).values({
@@ -128,7 +128,7 @@ describe('RecordsSyncService', () => {
 
       await expect(
         service.syncOnePage(organizationId, 'usage'),
-      ).resolves.toBeUndefined();
+      ).rejects.toThrow('network down');
 
       const [cursor] = await db
         .select()
@@ -401,7 +401,13 @@ describe('RecordsSyncService', () => {
       };
       const service = await createService(db, consumerApi);
 
-      await service.syncAllOrganizations();
+      // Still covers every combination even though one failed, but now
+      // surfaces the failure by rejecting instead of swallowing it, so a
+      // caller (the scheduler) can tell a degraded pass apart from a clean
+      // one.
+      await expect(service.syncAllOrganizations()).rejects.toThrow(
+        '1 of 8 record sync tasks failed',
+      );
 
       // 2 organizations x 4 entity types = 8 calls, even though one failed.
       expect(listRecords).toHaveBeenCalledTimes(8);

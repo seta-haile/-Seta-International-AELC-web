@@ -119,7 +119,7 @@ describe('CompletenessSyncService', () => {
     });
   });
 
-  it('logs and skips an organization when the consumer API call fails, without throwing', async () => {
+  it('logs and skips an organization when the consumer API call fails, then rejects so the caller can tell the pass was degraded', async () => {
     await withRollback(async (db) => {
       const organizationId = randomUUID();
       const consumerApi = {
@@ -128,7 +128,9 @@ describe('CompletenessSyncService', () => {
       };
       const service = await createService(db, consumerApi);
 
-      await expect(service.syncAllOrganizations()).resolves.toBeUndefined();
+      await expect(service.syncAllOrganizations()).rejects.toThrow(
+        '1 of 1 completeness sync tasks failed',
+      );
 
       const rows = await db
         .select()

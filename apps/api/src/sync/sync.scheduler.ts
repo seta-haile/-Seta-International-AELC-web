@@ -9,6 +9,7 @@ import { SchedulerRegistry } from '@nestjs/schedule';
 import { CompletenessSyncService } from './completeness-sync.service.js';
 import { ConsumerApiClient } from './consumer-api-client.js';
 import { RecordsSyncService } from './records-sync.service.js';
+import { SyncStatusService } from './sync-status.service.js';
 
 const RECORDS_INTERVAL_NAME = 'governance-records-sync';
 const COMPLETENESS_INTERVAL_NAME = 'governance-completeness-sync';
@@ -25,6 +26,7 @@ export class SyncScheduler implements OnApplicationBootstrap, OnModuleDestroy {
     private readonly config: ConfigService,
     private readonly schedulerRegistry: SchedulerRegistry,
     private readonly consumerApi: ConsumerApiClient,
+    private readonly syncStatus: SyncStatusService,
   ) {}
 
   onApplicationBootstrap(): void {
@@ -34,6 +36,9 @@ export class SyncScheduler implements OnApplicationBootstrap, OnModuleDestroy {
       );
       return;
     }
+
+    this.syncStatus.markConfigured('records');
+    this.syncStatus.markConfigured('completeness');
 
     const recordsIntervalMs = this.config.get<number>(
       'SYNC_RECORDS_INTERVAL_MS',
@@ -45,20 +50,26 @@ export class SyncScheduler implements OnApplicationBootstrap, OnModuleDestroy {
     );
 
     const recordsInterval = setInterval(() => {
-      this.recordsSync.syncAllOrganizations().catch((error: unknown) => {
-        this.logger.error(
-          `Records sync tick failed: ${(error as Error).message}`,
-        );
-      });
+      this.recordsSync
+        .syncAllOrganizations()
+        .then(() => this.syncStatus.recordSuccess('records'))
+        .catch((error: unknown) => {
+          const message = (error as Error).message;
+          this.logger.error(`Records sync tick failed: ${message}`);
+          this.syncStatus.recordFailure('records', message);
+        });
     }, recordsIntervalMs);
     this.schedulerRegistry.addInterval(RECORDS_INTERVAL_NAME, recordsInterval);
 
     const completenessInterval = setInterval(() => {
-      this.completenessSync.syncAllOrganizations().catch((error: unknown) => {
-        this.logger.error(
-          `Completeness sync tick failed: ${(error as Error).message}`,
-        );
-      });
+      this.completenessSync
+        .syncAllOrganizations()
+        .then(() => this.syncStatus.recordSuccess('completeness'))
+        .catch((error: unknown) => {
+          const message = (error as Error).message;
+          this.logger.error(`Completeness sync tick failed: ${message}`);
+          this.syncStatus.recordFailure('completeness', message);
+        });
     }, completenessIntervalMs);
     this.schedulerRegistry.addInterval(
       COMPLETENESS_INTERVAL_NAME,

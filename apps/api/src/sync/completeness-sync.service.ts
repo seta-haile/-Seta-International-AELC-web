@@ -17,16 +17,11 @@ export class CompletenessSyncService {
     private readonly config: ConfigService,
   ) {}
 
+  /** Runs one completeness pass across every organization. Throws if any
+   * organization failed, so callers can tell a fully-successful tick apart
+   * from one where every organization errored out silently. */
   async syncAllOrganizations(): Promise<void> {
-    let organizationIds: string[];
-    try {
-      organizationIds = await this.consumerApi.listOrganizations();
-    } catch (error) {
-      this.logger.error(
-        `Failed to list organizations: ${(error as Error).message}`,
-      );
-      return;
-    }
+    const organizationIds = await this.consumerApi.listOrganizations();
 
     const windowDays = this.config.get<number>(
       'SYNC_COMPLETENESS_WINDOW_DAYS',
@@ -37,14 +32,23 @@ export class CompletenessSyncService {
       occurredTo.getTime() - windowDays * MILLISECONDS_PER_DAY,
     );
 
+    const failures: string[] = [];
     for (const organizationId of organizationIds) {
       try {
         await this.syncOne(organizationId, occurredFrom, occurredTo);
       } catch (error) {
+        const message = (error as Error).message;
         this.logger.error(
-          `Completeness sync failed for organizationId=${organizationId}: ${(error as Error).message}`,
+          `Completeness sync failed for organizationId=${organizationId}: ${message}`,
         );
+        failures.push(`${organizationId}: ${message}`);
       }
+    }
+
+    if (failures.length > 0) {
+      throw new Error(
+        `${failures.length} of ${organizationIds.length} completeness sync tasks failed: ${failures.join('; ')}`,
+      );
     }
   }
 
