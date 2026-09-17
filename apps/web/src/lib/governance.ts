@@ -1,3 +1,5 @@
+import { cookies } from "next/headers";
+
 export interface GovernanceOverviewRecord {
   entityId: string;
   scopeInstallationId: string | null;
@@ -22,13 +24,18 @@ export interface GovernanceOverviewCompleteness {
   syncedAt: string;
 }
 
+export interface GovernanceOverviewEntityTypeRecords {
+  records: GovernanceOverviewRecord[];
+  totalCount: number;
+}
+
 export interface GovernanceOverviewOrganization {
   organizationId: string;
   records: {
-    usage: GovernanceOverviewRecord[];
-    activity: GovernanceOverviewRecord[];
-    relation: GovernanceOverviewRecord[];
-    attribution_link: GovernanceOverviewRecord[];
+    usage: GovernanceOverviewEntityTypeRecords;
+    activity: GovernanceOverviewEntityTypeRecords;
+    relation: GovernanceOverviewEntityTypeRecords;
+    attribution_link: GovernanceOverviewEntityTypeRecords;
   };
   completeness: GovernanceOverviewCompleteness | null;
   lastSyncedAt: string | null;
@@ -39,7 +46,10 @@ export interface GovernanceOverview {
 }
 
 export async function getGovernanceOverview(): Promise<GovernanceOverview> {
+  const token = (await cookies()).get("session")?.value;
+
   const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/governance/overview`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     cache: "no-store",
   });
   if (!res.ok) {

@@ -23,12 +23,18 @@ export function OrganizationPanel({ organization }: { organization: GovernanceOv
       <CardContent className="flex flex-col gap-4">
         <EntityTypeSummary records={organization.records} />
         <CompletenessPanel completeness={organization.completeness} />
-        {(Object.keys(ENTITY_TYPE_LABELS) as Array<keyof typeof ENTITY_TYPE_LABELS>).map((entityType) => (
-          <div key={entityType} className="flex flex-col gap-2">
-            <h3 className="text-sm font-medium">{ENTITY_TYPE_LABELS[entityType]}</h3>
-            <RecordTable records={organization.records[entityType]} />
-          </div>
-        ))}
+        {(Object.keys(ENTITY_TYPE_LABELS) as Array<keyof typeof ENTITY_TYPE_LABELS>).map((entityType) => {
+          const { records, totalCount } = organization.records[entityType];
+          return (
+            <div key={entityType} className="flex flex-col gap-2">
+              <h3 className="text-sm font-medium">
+                {ENTITY_TYPE_LABELS[entityType]}
+                {records.length < totalCount ? ` (showing ${records.length} of ${totalCount})` : ""}
+              </h3>
+              <RecordTable records={records} />
+            </div>
+          );
+        })}
       </CardContent>
     </Card>
   );

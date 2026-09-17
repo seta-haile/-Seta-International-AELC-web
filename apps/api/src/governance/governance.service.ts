@@ -27,9 +27,14 @@ export interface GovernanceOverviewCompleteness {
   syncedAt: string;
 }
 
+export interface GovernanceOverviewEntityTypeRecords {
+  records: GovernanceOverviewRecord[];
+  totalCount: number;
+}
+
 export interface GovernanceOverviewOrganization {
   organizationId: string;
-  records: Record<EntityType, GovernanceOverviewRecord[]>;
+  records: Record<EntityType, GovernanceOverviewEntityTypeRecords>;
   completeness: GovernanceOverviewCompleteness | null;
   lastSyncedAt: string | null;
 }
@@ -37,6 +42,14 @@ export interface GovernanceOverviewOrganization {
 export interface GovernanceOverview {
   organizations: GovernanceOverviewOrganization[];
 }
+
+// Per (organization, entity_type) cap on how many records are returned in the
+// overview response. The service still loads every matching row into memory
+// (see getOverview below) so it can compute lastSyncedAt/totalCount across the
+// full set, but only the most-recently-synced MAX_RECORDS_PER_ENTITY_TYPE rows
+// per group are serialized in the response, to bound payload size and what the
+// frontend renders.
+const MAX_RECORDS_PER_ENTITY_TYPE = 100;
 
 function emptyRecordsByType(): Record<EntityType, GovernanceOverviewRecord[]> {
   return { usage: [], activity: [], relation: [], attribution_link: [] };
@@ -82,9 +95,25 @@ export class GovernanceService {
 
       const completenessRow = completenessByOrg.get(organizationId);
 
+      const truncatedRecords = Object.fromEntries(
+        (Object.keys(grouped) as EntityType[]).map((entityType) => {
+          const typeRecords = grouped[entityType];
+          const sorted = [...typeRecords].sort(
+            (a, b) => new Date(b.syncedAt).getTime() - new Date(a.syncedAt).getTime(),
+          );
+          return [
+            entityType,
+            {
+              records: sorted.slice(0, MAX_RECORDS_PER_ENTITY_TYPE),
+              totalCount: typeRecords.length,
+            },
+          ];
+        }),
+      ) as Record<EntityType, GovernanceOverviewEntityTypeRecords>;
+
       return {
         organizationId,
-        records: grouped,
+        records: truncatedRecords,
         completeness: completenessRow
           ? {
               complete: completenessRow.complete,

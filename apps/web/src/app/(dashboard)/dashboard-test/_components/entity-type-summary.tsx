@@ -19,7 +19,11 @@ export function EntityTypeSummary({ records }: { records: GovernanceOverviewOrga
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-semibold tracking-tight">{records[entityType].length}</p>
+            <p className="text-2xl font-semibold tracking-tight">
+              {records[entityType].records.length < records[entityType].totalCount
+                ? `${records[entityType].records.length} of ${records[entityType].totalCount}`
+                : records[entityType].totalCount}
+            </p>
           </CardContent>
         </Card>
       ))}
