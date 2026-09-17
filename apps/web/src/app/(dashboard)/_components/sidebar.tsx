@@ -16,10 +16,11 @@ import {
   BarChart3,
 } from "lucide-react";
 import { cn } from "cn";
+import type { SessionUser } from "@/lib/auth";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/dashboard-test", label: "Dashboard Test", icon: FlaskConical },
+  { href: "/dashboard-test", label: "Dashboard Test", icon: FlaskConical, adminOnly: true },
   { href: "/issues", label: "Issues", icon: CircleDot },
   { href: "/ai-runs", label: "AI Runs", icon: Zap },
   { href: "/code-intelligence", label: "Code Intelligence", icon: ScanSearch },
@@ -29,8 +30,9 @@ const NAV_ITEMS = [
   { href: "/integrations", label: "Integrations", icon: Blocks },
 ];
 
-export function Sidebar() {
+export function Sidebar({ user }: { user: SessionUser }) {
   const pathname = usePathname();
+  const navItems = NAV_ITEMS.filter((item) => !item.adminOnly || user.role === "admin");
 
   return (
     <aside className="hidden w-64 shrink-0 flex-col border-r border-border bg-background sm:flex">
@@ -47,7 +49,7 @@ export function Sidebar() {
       </div>
 
       <nav className="flex flex-1 flex-col gap-0.5 px-3 py-2">
-        {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+        {navItems.map(({ href, label, icon: Icon }) => {
           const active = pathname === href;
           return (
             <Link

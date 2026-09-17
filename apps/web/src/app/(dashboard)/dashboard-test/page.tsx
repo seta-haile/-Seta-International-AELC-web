@@ -1,8 +1,15 @@
+import { redirect } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
+import { getCurrentUser } from "@/lib/auth";
 import { getGovernanceOverview } from "@/lib/governance";
 import { OrganizationPanel } from "./_components/organization-panel";
 
 export default async function DashboardTestPage() {
+  const user = await getCurrentUser();
+  if (!user || user.role !== "admin") {
+    redirect("/dashboard");
+  }
+
   let overview;
   try {
     overview = await getGovernanceOverview();
