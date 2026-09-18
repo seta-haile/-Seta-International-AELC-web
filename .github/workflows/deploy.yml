@@ -108,17 +108,17 @@ jobs:
           Write-Host "records: configured=$($status.records.configured) lastSuccessAt=$($status.records.lastSuccessAt) consecutiveFailures=$($status.records.consecutiveFailures)"
           Write-Host "completeness: configured=$($status.completeness.configured) lastSuccessAt=$($status.completeness.lastSuccessAt) consecutiveFailures=$($status.completeness.consecutiveFailures)"
           if (-not $status.records.configured -or -not $status.completeness.configured) {
-            Write-Host "::warning::Governance sync is not configured (CONSUMER_API_BASE_URL/CONSUMER_API_TOKEN missing) — /dashboard-test will stay empty."
+            Write-Host "::warning::Governance sync is not configured (CONSUMER_API_BASE_URL/CONSUMER_API_TOKEN missing) - /dashboard-test will stay empty."
           }
           # A fresh deploy hasn't ticked yet, so this only flags a job that
-          # was already failing before the deploy and is still failing now —
+          # was already failing before the deploy and is still failing now -
           # not "no successful run yet" (that's a separate, expected state
           # for minutes after every deploy or first-ever setup).
           if ($status.records.consecutiveFailures -gt 3) {
-            Write-Host "::warning::Records sync has failed $($status.records.consecutiveFailures) times in a row — last error: $($status.records.lastError)"
+            Write-Host "::warning::Records sync has failed $($status.records.consecutiveFailures) times in a row - last error: $($status.records.lastError)"
           }
           if ($status.completeness.consecutiveFailures -gt 3) {
-            Write-Host "::warning::Completeness sync has failed $($status.completeness.consecutiveFailures) times in a row — last error: $($status.completeness.lastError)"
+            Write-Host "::warning::Completeness sync has failed $($status.completeness.consecutiveFailures) times in a row - last error: $($status.completeness.lastError)"
           }
 
       - name: Prune stale build cache
