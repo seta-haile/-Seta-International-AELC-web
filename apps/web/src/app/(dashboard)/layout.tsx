@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { Sidebar } from "./_components/sidebar";
@@ -10,7 +11,14 @@ export default async function DashboardLayout({
   children: ReactNode;
 }) {
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  if (!user) {
+    // The session cookie exists but failed /auth/me validation (expired,
+    // revoked, or from a different API). The proxy middleware only checks
+    // cookie presence, so leaving it set would bounce /login <-> /dashboard
+    // forever - clearing it here breaks that loop.
+    (await cookies()).delete("session");
+    redirect("/login");
+  }
 
   return (
     <div className="flex flex-1 bg-muted/40 text-foreground">
